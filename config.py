@@ -29,15 +29,31 @@ OSINT_WHITELIST = {
     # [Tier 2] 당사국 공식 발표 (공식성은 높으나 자국 유리 왜곡·일방 주장 가능성 감안 -> 가중치 0.85)
     "mnd.gov.tw": {
         "tier": 2, "country": "TW", "language": "zh", "category": "party_official",
-        "name": "Taiwan MND", "weight": 0.85
+        "name": "Taiwan MND (대만 국방부)", "weight": 0.85
     },
     "mod.gov.cn": {
         "tier": 2, "country": "CN", "language": "zh", "category": "party_official",
-        "name": "China MoD", "weight": 0.85
+        "name": "China MoD (중국 국방부)", "weight": 0.85
     },
     "ccg.gov.cn": {
         "tier": 2, "country": "CN", "language": "zh", "category": "party_official",
-        "name": "China Coast Guard", "weight": 0.85
+        "name": "China Coast Guard (중국 해경)", "weight": 0.85
+    },
+    "news.cn": {
+        "tier": 2, "country": "CN", "language": "zh", "category": "party_official",
+        "name": "Xinhua News (신화통신 - 중국 관영)", "weight": 0.85
+    },
+    "mod.gov.in": {
+        "tier": 2, "country": "IN", "language": "en", "category": "party_official",
+        "name": "Ministry of Defence, India (인도 국방부)", "weight": 0.85
+    },
+    "pib.gov.in": {
+        "tier": 2, "country": "IN", "language": "en", "category": "party_official",
+        "name": "Press Information Bureau, India (인도 정부 공보국)", "weight": 0.85
+    },
+    "ispr.gov.pk": {
+        "tier": 2, "country": "PK", "language": "en", "category": "party_official",
+        "name": "ISPR Pakistan (파키스탄 군 홍보원)", "weight": 0.85
     },
 
     # [Tier 3] 공신력 있는 역내/글로벌 팩트 언론 (취재 기반 2차 보도 -> 가중치 0.75)
@@ -45,17 +61,29 @@ OSINT_WHITELIST = {
         "tier": 3, "country": "KR", "language": "ko", "category": "reputable_media",
         "name": "Yonhap News (연합뉴스)", "weight": 0.75
     },
-    "channelnewsasia.com": {
-        "tier": 3, "country": "SG", "language": "en", "category": "reputable_media",
-        "name": "CNA Singapore", "weight": 0.75
+    "cna.com.tw": {
+        "tier": 3, "country": "TW", "language": "zh", "category": "reputable_media",
+        "name": "CNA Taiwan (대만 중앙통신사)", "weight": 0.75
     },
     "kyodonews.net": {
         "tier": 3, "country": "JP", "language": "ja", "category": "reputable_media",
-        "name": "Kyodo News", "weight": 0.75
+        "name": "Kyodo News (교도통신)", "weight": 0.75
     },
     "nhk.or.jp": {
         "tier": 3, "country": "JP", "language": "ja", "category": "reputable_media",
         "name": "NHK World", "weight": 0.75
+    },
+    "thehindu.com": {
+        "tier": 3, "country": "IN", "language": "en", "category": "reputable_media",
+        "name": "The Hindu (인도 일간지)", "weight": 0.75
+    },
+    "dawn.com": {
+        "tier": 3, "country": "PK", "language": "en", "category": "reputable_media",
+        "name": "Dawn (파키스탄 일간지)", "weight": 0.75
+    },
+    "channelnewsasia.com": {
+        "tier": 3, "country": "SG", "language": "en", "category": "reputable_media",
+        "name": "CNA Singapore", "weight": 0.75
     },
     "reuters.com": {
         "tier": 3, "country": "GLOBAL", "language": "en", "category": "reputable_media",

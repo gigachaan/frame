@@ -218,15 +218,120 @@ class OSINTCollector:
 
         return documents
 
+    def _expand_korean_to_7_actors(self, question: str, event_date: Optional[str] = None) -> Dict[str, str]:
+        """
+        한국어 질문을 입력받아 7개 주요 안보 행위자
+        (중국, 대만, 일본, 한국, 인도, 파키스탄, 미국/글로벌)별 맞춤형 검색 쿼리로 자동 변환
+        """
+        date_str = f"{event_date} " if event_date else ""
+        q_lower = question.lower()
+
+        # [주제 1: 대만해협 / 양안 군사동향]
+        if any(k in question for k in ["대만", "양안", "차이잉원", "라이칭더", "중화민국"]):
+            return {
+                "CN": f"{date_str}台湾海峡 解放军 演习 战备警巡 东部战区 军机",
+                "TW": f"{date_str}台灣海峽 國防部 共機 越過中線 演習",
+                "JP": f"{date_str}台湾海峡 中国軍機 演習 防衛省 統合幕僚監部",
+                "KR": f"{date_str}{question} 국방부 군용기 동향",
+                "IN": f"{date_str}Taiwan Strait PLA military aircraft exercise China Taiwan",
+                "PK": f"{date_str}Taiwan Strait military activity China Taiwan tension",
+                "US": f"{date_str}Taiwan Strait PLA military exercises median line DoD",
+            }
+
+        # [주제 2: 인도-파키스탄 / 카슈미르 국경]
+        elif any(k in question for k in ["인도", "파키스탄", "카슈미르", "국경"]):
+            return {
+                "IN": f"{date_str}Indian Army Line of Control Kashmir border infiltration ceasefire",
+                "PK": f"{date_str}ISPR Pakistan Army Line of Control border ceasefire Indian firing",
+                "CN": f"{date_str}印巴 边境 冲突 克什米尔 实际控制线",
+                "KR": f"{date_str}{question} 인도 파키스탄 카슈미르 국경 충돌",
+                "JP": f"{date_str}インド パキスタン カシミール 国境 停戦ライン 衝突",
+                "TW": f"{date_str}印度 巴基斯坦 邊界 喀什米爾 衝突",
+                "US": f"{date_str}India Pakistan border clash Kashmir Line of Control",
+            }
+
+        # [주제 3: 일반 안보 질문 기본 변환]
+        return {
+            "KR": f"{date_str}{question} 국방부 발표",
+            "CN": f"{date_str}{question} 国防部 军演",
+            "TW": f"{date_str}{question} 國防部 軍事",
+            "JP": f"{date_str}{question} 防衛省 自衛隊 発表",
+            "US": f"{date_str}{question} military defense statement DoD",
+            "IN": f"{date_str}{question} military exercise defence ministry India",
+            "PK": f"{date_str}{question} military security ISPR Pakistan",
+        }
+
+    def collect_from_korean(
+        self,
+        question: str,
+        event_date: Optional[str] = None,
+        max_total_docs: int = 5,
+        days_back: int = 30,
+    ) -> Dict:
+        """
+        [핵심 함수] 한국어 질문 1개만 넣으면:
+        1. 중국, 대만, 일본, 한국, 인도, 파키스탄, 미국 7개국 쿼리로 자동 변환
+        2. 화이트리스트 기반 다국어 수집
+        3. 최대 5건으로 압축하여 7개국별로 그룹화 반환
+        """
+        print(f"\n[🌐] 한국어 질문 감지: '{question}' (일자: {event_date or '전체'})")
+        print("[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리로 자동 변환 중...")
+
+        query_map = self._expand_korean_to_7_actors(question, event_date)
+        for country_key, q in query_map.items():
+            print(f"  - [{country_key}] 쿼리: '{q}'")
+
+        # 각 국가별로 1~2건씩 검색 후 통합
+        all_collected = self.collect_multilingual(
+            queries=query_map,
+            days_back=days_back,
+            max_results_per_query=2,
+        )
+
+        # 🎯 최대 5건으로 수집 결과 제한
+        capped_docs = all_collected[:max_total_docs]
+        print(f"\n[🔒] 수집 건수 제한 적용: 총 {len(all_collected)}건 중 최상위 {len(capped_docs)}건 최종 선별 (최대 {max_total_docs}건 제한)")
+
+        # 7개국별로 깔끔하게 그룹화
+        by_country = {
+            "CN": [],  # 중국
+            "TW": [],  # 대만
+            "JP": [],  # 일본
+            "KR": [],  # 한국
+            "IN": [],  # 인도
+            "PK": [],  # 파키스탄
+            "US": [],  # 미국 / 글로벌
+        }
+
+        for doc in capped_docs:
+            c = doc.get("country", "").upper()
+            if c in by_country:
+                by_country[c].append(doc)
+            elif c in ("GLOBAL", "SG", "PH"):
+                by_country["US"].append(doc)
+            else:
+                by_country.setdefault("OTHER", []).append(doc)
+
+        return {
+            "korean_question": question,
+            "event_date": event_date,
+            "generated_queries": query_map,
+            "by_country": by_country,
+            "total_count": len(capped_docs),
+            "all_documents": capped_docs,
+        }
+
     def collect_plan(
         self,
         plan: dict,
         days_back: int = 7,
-        max_results_per_query: int = 4,
+        max_total_docs: int = 5,
+        max_results_per_query: int = 3,
     ) -> Dict:
         """
         앞단(Orchestrator/나현님)의 요청 포맷(event, event_date, queries)을 받아 수집하고,
-        중국(대만), 일본, 미국(글로벌), 한국 4개국 그룹화 결과 및 전체 리스트를 반환합니다.
+        중국, 대만, 일본, 한국, 인도, 파키스탄, 미국 7개국 그룹화 결과 및 전체 리스트를 반환합니다.
+        (결과는 최대 max_total_docs건으로 제한)
         """
         event = plan.get("event", "")
         event_date = plan.get("event_date")
@@ -256,23 +361,25 @@ class OSINTCollector:
             max_results_per_query=max_results_per_query,
         )
 
-        # 4개 그룹 (CN: 중국/대만, JP: 일본, US: 미국/글로벌, KR: 한국)으로 분류
+        # 🎯 최대 건수(기본 5건)로 컷
+        capped_docs = all_docs[:max_total_docs]
+
+        # 7개국 그룹으로 분류
         by_country = {
-            "CN": [],  # 중국 및 대만 당사자
+            "CN": [],  # 중국
+            "TW": [],  # 대만
             "JP": [],  # 일본
-            "US": [],  # 미국 및 글로벌
             "KR": [],  # 한국
+            "IN": [],  # 인도
+            "PK": [],  # 파키스탄
+            "US": [],  # 미국 및 글로벌
         }
 
-        for doc in all_docs:
+        for doc in capped_docs:
             c = doc.get("country", "").upper()
-            if c in ("CN", "TW"):
-                by_country["CN"].append(doc)
-            elif c == "JP":
-                by_country["JP"].append(doc)
-            elif c == "KR":
-                by_country["KR"].append(doc)
-            elif c in ("US", "GLOBAL", "SG", "PH"):
+            if c in by_country:
+                by_country[c].append(doc)
+            elif c in ("GLOBAL", "SG", "PH"):
                 by_country["US"].append(doc)
             else:
                 by_country.setdefault("OTHER", []).append(doc)
@@ -281,7 +388,8 @@ class OSINTCollector:
             "event": event,
             "event_date": event_date,
             "by_country": by_country,
-            "all_documents": all_docs,
+            "total_count": len(capped_docs),
+            "all_documents": capped_docs,
         }
         return response
 
