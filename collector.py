@@ -25,11 +25,14 @@ except ImportError:
 
 from config import (
     OSINT_WHITELIST,
+    COUNTRY_DOMAINS,
     QUOTE_PATTERNS,
     MAX_RAW_CHARS,
     MAX_PARAGRAPH_CHARS,
     MIN_PARAGRAPH_CHARS,
+    DEFENSE_LEXICON,
 )
+
 
 
 def auto_load_dotenv(env_path: Optional[str] = None) -> None:
@@ -143,19 +146,26 @@ class OSINTCollector:
 
         return paragraphs
 
-    def collect(self, query: str, days_back: int = 3, max_results: int = 5) -> List[Dict]:
+    def collect(
+        self,
+        query: str,
+        days_back: int = 3,
+        max_results: int = 5,
+        include_domains: Optional[List[str]] = None,
+    ) -> List[Dict]:
         """단일 검색어로 Tavily를 검색하고 규격화된 문서 딕셔너리 리스트 반환"""
         if self.client is None:
             print("[-] Tavily 클라이언트가 준비되지 않았습니다. TAVILY_API_KEY 확인 또는 pip install tavily-python 필요")
             return []
 
         time_range = "day" if days_back <= 1 else "week" if days_back <= 7 else "month"
+        domains_to_use = include_domains if include_domains is not None else self.allowed_domains
 
         try:
             response = self.client.search(
                 query=query,
                 search_depth="advanced",
-                include_domains=self.allowed_domains,
+                include_domains=domains_to_use,
                 time_range=time_range,
                 include_raw_content=True,
                 max_results=max_results,
@@ -218,48 +228,53 @@ class OSINTCollector:
 
         return documents
 
+    def _translate_to_actor_query(self, question: str, target: str) -> str:
+        """한국어 질문 문장을 대상 국가/언어(KR, CN, TW, JP, EN)에 맞게 1:1 자연 번역"""
+        if target == "KR":
+            # 🇰🇷 한국어 질문은 인위적인 수식어/키워드 추가 없이 질문 원문 그대로 깨끗하게 전달
+            return question.strip()
+
+        target_lang = "EN" if target in ("US", "IN", "PK") else target
+
+        # 한국어 조사 및 불필요 문장 어미 정리
+        cleaned = question
+        particles = [
+            r'은\b', r'는\b', r'이\b', r'가\b', r'을\b', r'를\b', r'의\b',
+            r'에\b', r'에서\b', r'에\s*대한\b', r'내역은\b', r'있나요\b',
+            r'알려줘\b', r'어떻게\s*되나요\b', r'어떤가요\b', r'\?'
+        ]
+        for p in particles:
+            cleaned = re.sub(p, ' ', cleaned)
+
+        # 긴 구문부터 우선 치환
+        sorted_lexicon = sorted(DEFENSE_LEXICON, key=lambda x: len(x[0]), reverse=True)
+        translated = cleaned
+        for phrase, trans_map in sorted_lexicon:
+            if phrase in translated:
+                replacement = trans_map.get(target_lang, trans_map.get("EN", phrase))
+                translated = translated.replace(phrase, f" {replacement} ")
+
+        # 공백 정리
+        final_query = " ".join(translated.split())
+        return final_query if final_query else question.strip()
+
     def _expand_korean_to_7_actors(self, question: str, event_date: Optional[str] = None) -> Dict[str, str]:
         """
-        한국어 질문을 입력받아 7개 주요 안보 행위자
-        (중국, 대만, 일본, 한국, 인도, 파키스탄, 미국/글로벌)별 맞춤형 검색 쿼리로 자동 변환
+        한국어 질문 문장 1개를 받아 7개 안보 행위자
+        (중국 CN, 대만 TW, 일본 JP, 한국 KR, 인도 IN, 파키스탄 PK, 미국 US)별 맞춤형 쿼리로 1:1 직역/변환
+        - 인위적인 키워드 샐러드 없이 사용자의 질문 의도를 정확하고 깨끗하게 반영
         """
-        date_str = f"{event_date} " if event_date else ""
-        q_lower = question.lower()
-
-        # [주제 1: 대만해협 / 양안 군사동향]
-        if any(k in question for k in ["대만", "양안", "차이잉원", "라이칭더", "중화민국"]):
-            return {
-                "CN": f"{date_str}台湾海峡 解放军 演习 战备警巡 东部战区 军机",
-                "TW": f"{date_str}台灣海峽 國防部 共機 越過中線 演習",
-                "JP": f"{date_str}台湾海峡 中国軍機 演習 防衛省 統合幕僚監部",
-                "KR": f"{date_str}{question} 국방부 군용기 동향",
-                "IN": f"{date_str}Taiwan Strait PLA military aircraft exercise China Taiwan",
-                "PK": f"{date_str}Taiwan Strait military activity China Taiwan tension",
-                "US": f"{date_str}Taiwan Strait PLA military exercises median line DoD",
-            }
-
-        # [주제 2: 인도-파키스탄 / 카슈미르 국경]
-        elif any(k in question for k in ["인도", "파키스탄", "카슈미르", "국경"]):
-            return {
-                "IN": f"{date_str}Indian Army Line of Control Kashmir border infiltration ceasefire",
-                "PK": f"{date_str}ISPR Pakistan Army Line of Control border ceasefire Indian firing",
-                "CN": f"{date_str}印巴 边境 冲突 克什米尔 实际控制线",
-                "KR": f"{date_str}{question} 인도 파키스탄 카슈미르 국경 충돌",
-                "JP": f"{date_str}インド パキスタン カシミール 国境 停戦ライン 衝突",
-                "TW": f"{date_str}印度 巴基斯坦 邊界 喀什米爾 衝突",
-                "US": f"{date_str}India Pakistan border clash Kashmir Line of Control",
-            }
-
-        # [주제 3: 일반 안보 질문 기본 변환]
-        return {
-            "KR": f"{date_str}{question} 국방부 발표",
-            "CN": f"{date_str}{question} 国防部 军演",
-            "TW": f"{date_str}{question} 國防部 軍事",
-            "JP": f"{date_str}{question} 防衛省 自衛隊 発表",
-            "US": f"{date_str}{question} military defense statement DoD",
-            "IN": f"{date_str}{question} military exercise defence ministry India",
-            "PK": f"{date_str}{question} military security ISPR Pakistan",
+        clean_q = question.strip()
+        queries = {
+            "KR": self._translate_to_actor_query(clean_q, "KR"),
+            "CN": self._translate_to_actor_query(clean_q, "CN"),
+            "TW": self._translate_to_actor_query(clean_q, "TW"),
+            "JP": self._translate_to_actor_query(clean_q, "JP"),
+            "US": self._translate_to_actor_query(clean_q, "US"),
+            "IN": self._translate_to_actor_query(clean_q, "IN"),
+            "PK": self._translate_to_actor_query(clean_q, "PK"),
         }
+        return queries
 
     def collect_from_korean(
         self,
@@ -271,7 +286,7 @@ class OSINTCollector:
     ) -> Dict:
         """
         [핵심 함수] 한국어 질문 1개만 입력받아:
-        1. 7대 주요 안보 행위자(중국 CN, 대만 TW, 일본 JP, 한국 KR, 인도 IN, 파키스탄 PK, 미국 US)별 전용 맞춤 쿼리로 자동 변환
+        1. 7대 주요 안보 행위자(중국 CN, 대만 TW, 일본 JP, 한국 KR, 인도 IN, 파키스탄 PK, 미국 US)별 전용 맞춤 쿼리로 1:1 직역/변환
         2. 화이트리스트 기반 Tavily 다국어 수집
         3. 🎯 각 국가별로 최대 5건(max_docs_per_country)씩 선별하여 7개국 그룹으로 반환
         """
@@ -280,13 +295,13 @@ class OSINTCollector:
             max_docs_per_country = kwargs["max_total_docs"]
 
         print(f"\n[🌐] 한국어 질문 감지: '{question}' (일자: {event_date or '전체'})")
-        print(f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작...")
+        print(f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 1:1 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작...")
 
         query_map = self._expand_korean_to_7_actors(question, event_date)
         for country_key, q in query_map.items():
             print(f"  - [{country_key}] 쿼리: '{q}'")
 
-        # 7개국별 문서 버킷 초기화
+        # 7개국별 문서 버킷 초기화 (나라별로 묶어 관리)
         by_country = {
             "CN": [],  # 중국
             "TW": [],  # 대만
@@ -301,10 +316,12 @@ class OSINTCollector:
 
         for country_key, q in query_map.items():
             print(f"  [>] 검색 중 ({country_key}): '{q}'...")
+            target_domains = COUNTRY_DOMAINS.get(country_key, self.allowed_domains)
             docs = self.collect(
                 query=q,
                 days_back=days_back,
                 max_results=max_docs_per_country,
+                include_domains=target_domains,
             )
             for d in docs:
                 norm_url = d["url"].split("#")[0].rstrip("/")
@@ -312,24 +329,11 @@ class OSINTCollector:
                     continue
                 seen_urls.add(norm_url)
 
-                c = d.get("country", "").upper()
-                if c in by_country:
-                    target_bucket = c
-                elif c in ("GLOBAL", "SG", "PH"):
-                    # 글로벌 매체는 해당 쿼리 국가가 아직 자리가 있으면 해당 국가에 배정, 아니면 US에 배정
-                    if len(by_country[country_key]) < max_docs_per_country:
-                        target_bucket = country_key
-                    else:
-                        target_bucket = "US"
-                elif country_key in by_country:
-                    target_bucket = country_key
-                else:
-                    target_bucket = "OTHER"
+                if d.get("country") in ("UNKNOWN", "GLOBAL") and country_key != "US":
+                    d["target_actor"] = country_key
 
-                if target_bucket in by_country and len(by_country[target_bucket]) < max_docs_per_country:
-                    by_country[target_bucket].append(d)
-                elif target_bucket == "OTHER":
-                    by_country.setdefault("OTHER", []).append(d)
+                if len(by_country[country_key]) < max_docs_per_country:
+                    by_country[country_key].append(d)
 
         # 전체 수집 문서 합산 (각 국가별 최대 max_docs_per_country 건)
         all_documents = []
@@ -341,12 +345,13 @@ class OSINTCollector:
             print(f"  - [{c_code}] {len(docs)}건 / 최대 {max_docs_per_country}건")
 
         return {
+            "by_country": by_country,
             "korean_question": question,
             "event_date": event_date,
             "generated_queries": query_map,
-            "by_country": by_country,
             "total_count": len(all_documents),
             "all_documents": all_documents,
+            **by_country,  # result["CN"], result["TW"] 등 국가 코드로도 직관적으로 바로 접근 가능
         }
 
     def collect_plan(
@@ -379,10 +384,9 @@ class OSINTCollector:
             elif isinstance(item, str):
                 query_map[f"q_{len(query_map)+1}"] = item
 
-        # 🇰🇷 한국어 쿼리가 없으면 한국 출처 수집을 위해 자동 보강
+        # 🇰🇷 한국어 쿼리가 없으면 한국 출처 수집을 위해 자동 보강 (원문 그대로 1:1 추가)
         if "ko" not in query_map and event:
-            date_prefix = f"{event_date} " if event_date else ""
-            query_map["ko"] = f"{date_prefix}{event} 군용기 동향 국방부 발표".strip()
+            query_map["ko"] = event.strip()
             print(f"  [+] 한국 출처 수집을 위해 한국어 쿼리 자동 추가: '{query_map['ko']}'")
 
         # 다국어 수집 실행
@@ -427,11 +431,12 @@ class OSINTCollector:
             print(f"  - [{c_code}] {len(docs)}건 / 최대 {max_docs_per_country}건")
 
         response = {
+            "by_country": by_country,
             "event": event,
             "event_date": event_date,
-            "by_country": by_country,
             "total_count": len(retained_docs),
             "all_documents": retained_docs,
+            **by_country,  # result["CN"], result["TW"] 등 국가 코드로도 직관적으로 바로 접근 가능
         }
         return response
 

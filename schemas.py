@@ -59,8 +59,10 @@ class SearchPlanRequest(BaseModel):
 
 
 class OSINTCollectionResponse(BaseModel):
-    """수집기가 최종 반환하는 4개국 그룹화 응답 규격"""
+    """수집기가 최종 반환하는 7개국 그룹화 응답 규격"""
     event: str
     event_date: Optional[str] = None
-    by_country: dict = Field(description="국가별(CN/TW, JP, US, KR) 그룹화된 문서 목록")
+    by_country: dict = Field(description="국가별(CN, TW, JP, KR, IN, PK, US) 그룹화된 문서 목록")
+    total_count: int = Field(description="전체 수집 문서 수")
     all_documents: List[DocumentData] = Field(description="전체 수집 문서 리스트")
+
