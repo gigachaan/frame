@@ -27,21 +27,38 @@ try:
 except ImportError:
     TavilyClient = None
 
-from config import (
-    OSINT_WHITELIST,
-    COUNTRY_DOMAINS,
-    DEFENSE_LEXICON,
-    MAX_RAW_CHARS,
-    MAX_PARAGRAPH_CHARS,
-    MIN_PARAGRAPH_CHARS,
-    DEFAULT_MIN_SCORE,
-)
-from schemas import (
-    DocumentData,
-    ParagraphData,
-    CleaningMeta,
-    OSINTCollectionResponse,
-)
+try:
+    from .config import (
+        OSINT_WHITELIST,
+        COUNTRY_DOMAINS,
+        DEFENSE_LEXICON,
+        MAX_RAW_CHARS,
+        MAX_PARAGRAPH_CHARS,
+        MIN_PARAGRAPH_CHARS,
+        DEFAULT_MIN_SCORE,
+    )
+    from .schemas import (
+        DocumentData,
+        ParagraphData,
+        CleaningMeta,
+        OSINTCollectionResponse,
+    )
+except ImportError:
+    from config import (
+        OSINT_WHITELIST,
+        COUNTRY_DOMAINS,
+        DEFENSE_LEXICON,
+        MAX_RAW_CHARS,
+        MAX_PARAGRAPH_CHARS,
+        MIN_PARAGRAPH_CHARS,
+        DEFAULT_MIN_SCORE,
+    )
+    from schemas import (
+        DocumentData,
+        ParagraphData,
+        CleaningMeta,
+        OSINTCollectionResponse,
+    )
 
 
 def auto_load_dotenv(env_path: Optional[str] = None) -> None:
