@@ -104,7 +104,14 @@ def main():
             print(f"    * ... 외 {len(docs) - 2}건 추가 확보")
 
     collector.export_json(result, "collected_live.json")
-    print("\n[💾] 'collected_live.json' 저장 완료!")
+    try:
+        # 상위 루트 디렉토리(c:\KoreanDefense\collected_live.json) 동기화
+        root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "collected_live.json"))
+        with open(root_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        print(f"[💾] 루트 경로 동기화 완료: {root_path}")
+    except Exception as e:
+        print(f"[-] 루트 동기화 실패: {e}")
 
 if __name__ == "__main__":
     main()

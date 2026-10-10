@@ -133,6 +133,9 @@ class OSINTCollector:
 
         for piece in raw_pieces:
             piece = piece.strip()
+            # 이미지 마크다운 잔여물이나 단순 링크 라인 제거
+            if re.match(r'^!\[.*?\]\(.*?\)$', piece) or re.match(r'^\[.*?\]\(.*?\)$', piece):
+                continue
             if len(piece) < MIN_PARAGRAPH_CHARS:
                 continue
 
@@ -142,18 +145,152 @@ class OSINTCollector:
                     paragraphs.append(chunk)
 
         if not paragraphs and text.strip():
-            paragraphs = [text[:MAX_PARAGRAPH_CHARS].strip()]
+            fallback = text[:MAX_PARAGRAPH_CHARS].strip()
+            if len(fallback) >= MIN_PARAGRAPH_CHARS:
+                paragraphs = [fallback]
 
         return paragraphs
+
+    def _is_article_url(self, url: str) -> bool:
+        """
+        기사/보도자료 상세 본문 페이지가 아닌 사이트 메인, 인덱스, 카테고리, 목차, 페이징 URL을 필터링하여 제외
+        """
+        if not url:
+            return False
+        parsed = urlparse(url)
+        path = parsed.path.lower().rstrip('/')
+        query = parsed.query.lower()
+
+        # 1. 도메인 메인 홈페이지만 있는 경우 (/ 또는 /index.html 등)
+        if not path or path in ('', '/index.html', '/index.htm', '/home', '/default.aspx', '/index'):
+            return False
+
+        # 2. 인덱스/페이징/카테고리/목록/색인 패턴 차단
+        blacklist_patterns = [
+            r'/index(_\d+)?\.(html?|php|jsp|aspx?)$',  # index.html, index_4.html 등
+            r'pageindex=\d+',                          # 페이징 파라미터
+            r'/overview(\.html?|\.aspx?)?$',           # 목록 개요 페이지
+            r'/sitemap',                               # 사이트맵
+            r'/wzdt_',                                 # 사이트맵(중국어)
+            r'sakuin\.pdf$',                           # 50음도 색인 pdf
+            r'/category/',                             # 카테고리
+            r'/channel/',                              # 채널
+            r'/tag/',                                  # 태그 목록
+            r'/topic/',                                # 토픽 목록
+        ]
+        for pat in blacklist_patterns:
+            if re.search(pat, path) or re.search(pat, query):
+                return False
+
+        return True
+
+    def _clean_content(self, text: str) -> tuple:
+        """
+        HTML 태그 및 마크다운 내비게이션/이미지/보일러플레이트 요소를 완전 제거하여
+        기사의 순수 본문 텍스트만 추출하고, 제거된 블록 유형 목록을 반환
+        """
+        if not text or not text.strip():
+            return "", []
+
+        cleaned = text
+        removed_blocks = []
+
+        # 1. HTML 형식일 경우 BeautifulSoup으로 1차 정제
+        if "<html" in cleaned.lower() or "<body" in cleaned.lower() or "<div" in cleaned.lower() or "<p" in cleaned.lower():
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(cleaned, "html.parser")
+
+                has_boilerplate_tags = bool(soup.find_all(["script", "style", "nav", "header", "footer", "aside"]))
+                for tag in soup(["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe", "svg"]):
+                    tag.decompose()
+                if has_boilerplate_tags:
+                    removed_blocks.append("내비게이션/헤더/푸터 태그")
+
+                has_img = bool(soup.find_all(["img", "picture", "figure"]))
+                for tag in soup(["img", "picture", "figure"]):
+                    tag.decompose()
+                if has_img:
+                    removed_blocks.append("광고/이미지 태그")
+
+                best_tag = soup.body if soup.body else soup
+                articles = soup.find_all("article")
+                if articles:
+                    best_tag = max(articles, key=lambda a: len(a.get_text(strip=True)))
+                else:
+                    mains = soup.find_all(["main", "div", "section"])
+                    valid_mains = []
+                    for m in mains:
+                        cls = m.get("class", [])
+                        if not isinstance(cls, list):
+                            cls = [cls]
+                        attrs = str(m.get("id", "")) + " " + " ".join(cls)
+                        if any(x in attrs.lower() for x in ["content", "article", "main", "body", "news", "post"]):
+                            valid_mains.append(m)
+                    if valid_mains:
+                        best_tag = max(valid_mains, key=lambda m: len(m.get_text(strip=True)))
+
+                cleaned = best_tag.get_text(separator="\n")
+            except Exception:
+                pass
+
+        # 2. 마크다운 및 텍스트 수준의 보일러플레이트 정제 (Tavily raw_content 마크다운 대응)
+        cleaned = re.sub(r'<script.*?>.*?</script>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r'<style.*?>.*?</style>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r'<[^>]+>', ' ', cleaned)
+
+        # 마크다운 이미지 완전 제거 (![...](...) 및 [![...](...)](...))
+        if re.search(r'!\[.*?\]\(.*?\)', cleaned):
+            removed_blocks.append("마크다운 이미지 블록")
+        cleaned = re.sub(r'\[!\[.*?\]\(.*?\)\]\(.*?\)', '', cleaned)
+        cleaned = re.sub(r'!\[.*?\]\(.*?\)', '', cleaned)
+
+        # 마크다운 메뉴 목록 제거 (예: `* [메뉴](링크)`, `+ [메뉴](링크)`)
+        if re.search(r'^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$', cleaned, flags=re.MULTILINE):
+            removed_blocks.append("메뉴/링크 목록")
+        cleaned = re.sub(r'^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$', '', cleaned, flags=re.MULTILINE)
+        cleaned = re.sub(r'\[.*?\]\(#[^\)]*\)', '', cleaned)
+
+        # 3. 사이트 내비게이션/헤더/푸터 보일러플레이트 키워드 필터링
+        boilerplate_kws = [
+            '본문 바로가기', '메뉴 바로가기', '기사제보', '저작권자', 'all rights reserved',
+            'copyright', 'epaper', 'live tv', 'gift a subscription', 'you are logged in',
+            'english', '繁體版', '网站地图', '跳到中央內容區塊', '點這裡瞭解', 'privacy statement',
+            '本網站使用相關技術', 'share this article', 'follow us on', 'subscribe to',
+            'active subscription', '구독하기', '추천 기사', '관련 기사 목록'
+        ]
+
+        clean_lines = []
+        for line in cleaned.splitlines():
+            line_str = line.strip()
+            if not line_str:
+                continue
+            lower_line = line_str.lower()
+            # 90자 미만의 짧은 안내 배너/링크 줄인 경우에만 정제 (기사 본문 문장은 안전 보존)
+            if len(line_str) < 90 and any(kw in lower_line for kw in boilerplate_kws):
+                removed_blocks.append("구독/광고/안내 배너")
+                continue
+            # 순수 마크다운 링크 또는 브레드크럼(경로 이동)만 나열된 줄 스킵
+            if re.match(r'^(\s*(\[.*?\]\(.*?\)|[>/»›\|·\-])\s*)+(/정문|/正文|/)?$', line_str):
+                removed_blocks.append("경로 탐색(브레드크럼)")
+                continue
+            if re.match(r'^(\s*\[.*?\]\(.*?\)\s*)+$', line_str):
+                removed_blocks.append("단독 링크 나열 줄")
+                continue
+            clean_lines.append(line_str)
+
+        unique_removed = sorted(list(set(removed_blocks)))
+        return "\n\n".join(clean_lines), unique_removed
 
     def collect(
         self,
         query: str,
         days_back: int = 3,
         max_results: int = 5,
+        min_score: Optional[float] = None,
         include_domains: Optional[List[str]] = None,
     ) -> List[Dict]:
-        """단일 검색어로 Tavily를 검색하고 규격화된 문서 딕셔너리 리스트 반환"""
+        """단일 검색어로 Tavily를 검색하고 규격화된 문서 딕셔너리 리스트 반환 (인덱스 제외 및 본문 정제)"""
         if self.client is None:
             print("[-] Tavily 클라이언트가 준비되지 않았습니다. TAVILY_API_KEY 확인 또는 pip install tavily-python 필요")
             return []
@@ -161,6 +298,7 @@ class OSINTCollector:
         time_range = "day" if days_back <= 1 else "week" if days_back <= 7 else "month"
         domains_to_use = include_domains if include_domains is not None else self.allowed_domains
 
+        fetch_count = min(max_results * 2, 10)
         try:
             response = self.client.search(
                 query=query,
@@ -168,7 +306,7 @@ class OSINTCollector:
                 include_domains=domains_to_use,
                 time_range=time_range,
                 include_raw_content=True,
-                max_results=max_results,
+                max_results=fetch_count,
             )
         except Exception as e:
             print(f"[-] Tavily 검색 실패 (Query: '{query}'): {e}")
@@ -177,25 +315,51 @@ class OSINTCollector:
         documents = []
         for item in response.get("results", []):
             url = item.get("url", "")
+            # 1. 인덱스/홈페이지/목록 페이지 배제
+            if not self._is_article_url(url):
+                continue
+
+            score = round(float(item.get("score") or 0.0), 4)
+            if min_score is not None and score < min_score:
+                continue
+
+            # 원본 보존 (나현님 요청: raw_content)
             raw_text = item.get("raw_content") or item.get("content") or ""
-            if not raw_text.strip():
+            cleaned_text, removed_blocks = self._clean_content(raw_text)
+
+            # 내용이 부족하면 Tavily의 content 필드로 폴백 정제
+            if len(cleaned_text.strip()) < 80 and item.get("content"):
+                alt_cleaned, alt_blocks = self._clean_content(item.get("content"))
+                if len(alt_cleaned) > len(cleaned_text):
+                    cleaned_text = alt_cleaned
+                    removed_blocks = sorted(list(set(removed_blocks + alt_blocks)))
+
+            if len(cleaned_text.strip()) < 40:
                 continue
 
             tier_info = self._resolve_tier_meta(url)
             doc_id = f"doc_{uuid.uuid4().hex[:8]}"
-            language = self._detect_language(url, raw_text)
+            language = self._detect_language(url, cleaned_text)
 
-            is_truncated = len(raw_text) > MAX_RAW_CHARS
+            is_truncated = len(cleaned_text) > MAX_RAW_CHARS
             status = "success_truncated" if is_truncated else "success_full"
 
-            clipped_text = raw_text[:MAX_RAW_CHARS]
+            clipped_text = cleaned_text[:MAX_RAW_CHARS]
             paragraphs_text = self._split_into_paragraphs(clipped_text)
+            if not paragraphs_text:
+                continue
             quoted_source = self._extract_attribution_hint(clipped_text)
+
+            # 수동 검토 필요 여부 판별 (needs_review)
+            paywall_keywords = ["subscribe to read", "active subscription", "로그인 후", "구독회원 전용", "有料会員"]
+            is_paywall_likely = any(pw in raw_text.lower() for pw in paywall_keywords) and len(cleaned_text) < 400
+            needs_review = bool(len(cleaned_text) < 200 or is_paywall_likely)
 
             doc_entry = {
                 "doc_id": doc_id,
                 "url": url,
                 "title": item.get("title", ""),
+                "score": score,  # 🎯 [Tavily score 검색 관련도 점수]
                 "language": language,  # 🌐 [자동 언어 판별 태그: zh, ja, ko, en]
 
                 # 🏷️ [티어 메타데이터]
@@ -215,16 +379,28 @@ class OSINTCollector:
                 "event_date": None,
                 "status": status,
 
-                # 📑 [문단 단위 목록]
+                # 📦 [나현님 요청 신규 스펙: 원본 보존 및 정제 텍스트]
+                "raw_content": raw_text[:MAX_RAW_CHARS],  # 원본 보존 (검토/대조용)
+                "article_text": cleaned_text,             # 광고·구독·메뉴 제거된 순수 기사 본문
+                "cleaning": {
+                    "removed_blocks": removed_blocks,
+                    "needs_review": needs_review,
+                },
+
+                # 📑 [문단 단위 목록 (Ollama 입력용)]
                 "paragraphs": [
                     {
                         "paragraph_id": f"{doc_id}_p{idx + 1}",
                         "raw_text": p_text,
+                        "id": f"{doc_id}_p{idx + 1}",  # 나현님 id 필드 호환
+                        "text": p_text,                # 나현님 text 필드 호환
                     }
                     for idx, p_text in enumerate(paragraphs_text)
                 ],
             }
             documents.append(doc_entry)
+            if len(documents) >= max_results:
+                break
 
         return documents
 
@@ -282,6 +458,7 @@ class OSINTCollector:
         event_date: Optional[str] = None,
         max_docs_per_country: int = 5,
         days_back: int = 30,
+        min_score: Optional[float] = None,
         **kwargs,
     ) -> Dict:
         """
@@ -321,6 +498,7 @@ class OSINTCollector:
                 query=q,
                 days_back=days_back,
                 max_results=max_docs_per_country,
+                min_score=min_score,
                 include_domains=target_domains,
             )
             for d in docs:
@@ -360,6 +538,7 @@ class OSINTCollector:
         days_back: int = 7,
         max_docs_per_country: int = 5,
         max_results_per_query: int = 5,
+        min_score: Optional[float] = None,
         **kwargs,
     ) -> Dict:
         """
@@ -394,6 +573,7 @@ class OSINTCollector:
             queries=query_map,
             days_back=days_back,
             max_results_per_query=max_results_per_query,
+            min_score=min_score,
         )
 
         # 7개국 그룹으로 분류 (각 국가별 최대 max_docs_per_country건 제한)
@@ -445,6 +625,7 @@ class OSINTCollector:
         queries: object,
         days_back: int = 3,
         max_results_per_query: int = 5,
+        min_score: Optional[float] = None,
     ) -> List[Dict]:
         """다국어 쿼리(리스트 또는 딕셔너리)를 받아 중복 URL을 제거하고 통합 수집"""
         if isinstance(queries, dict):
@@ -458,7 +639,7 @@ class OSINTCollector:
         for lang_key, q in query_items:
             print(f"  [>] 검색 중 ({lang_key}): '{q}'...")
             docs = self.collect(
-                query=q, days_back=days_back, max_results=max_results_per_query
+                query=q, days_back=days_back, max_results=max_results_per_query, min_score=min_score
             )
             for d in docs:
                 norm_url = d["url"].split("#")[0].rstrip("/")
@@ -497,6 +678,16 @@ class OSINTCollector:
             else len(documents)
         )
         print(f"[💾] 파일 저장 완료: {out_path.resolve()} (총 {count}개 문서)")
+
+        # 상위 디렉토리(루트)에도 동일 파일이 존재하거나 frame 하위에서 실행된 경우 자동 동기화
+        try:
+            parent_target = out_path.parent.parent / out_path.name
+            if parent_target.parent.exists() and parent_target.resolve() != out_path.resolve():
+                with open(parent_target, "w", encoding="utf-8") as f:
+                    json.dump(documents, f, indent=2, ensure_ascii=False)
+                print(f"  [🔄] 루트 디렉토리 동기화 완료: {parent_target.resolve()}")
+        except Exception:
+            pass
 
     @staticmethod
     def load_json(filepath: str) -> List[Dict]:

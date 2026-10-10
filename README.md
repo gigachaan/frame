@@ -103,6 +103,7 @@
   "doc_id": "doc_a1b2c3d4",
   "url": "https://www.mod.go.jp/j/press/news/2026/10/10a.html",
   "title": "中国海軍艦艇の動向について",
+  "score": 0.8842,
   "language": "ja",
   "tier": 1,
   "source_name": "Japan MoD / Joint Staff",
@@ -115,10 +116,18 @@
   "published_date": "2026-10-10",
   "event_date": null,
   "status": "success_full",
+  "raw_content": "Tavily 수집 원본 (대조 및 검증용)",
+  "article_text": "광고·메뉴·구독안내 등이 정제된 순수 기사 본문 전문",
+  "cleaning": {
+    "removed_blocks": ["구독/광고/안내 배너", "내비게이션/헤더/푸터 태그"],
+    "needs_review": false
+  },
   "paragraphs": [
     {
       "paragraph_id": "doc_a1b2c3d4_p1",
-      "raw_text": "防衛省統合幕僚監部は、本日午前8時頃、中国海軍の艦艇2隻が台湾海峡周辺を航行したことを確認した。"
+      "raw_text": "防衛省統合幕僚監部は、本日午前8時頃、中国海軍の艦艇2隻が台湾海峡周辺を航行したことを確認した。",
+      "id": "doc_a1b2c3d4_p1",
+      "text": "防衛省統合幕僚監部は、本日午前8時頃、中国海軍の艦艇2隻が台湾海峡周辺を航行したことを確認した。"
     }
   ]
 }
