@@ -33,6 +33,9 @@ class DocumentData(BaseModel):
     is_reprint_likely: bool = Field(default=False, description="다른 매체를 재인용한 기사일 가능성 여부")
     quoted_source: Optional[str] = Field(default=None, description="본문에서 감지된 원래 발언 주체/인용 매체 (예: Reuters, Taiwan MND)")
 
+    # 🔍 검색 쿼리
+    query: str = Field(default="", description="문서 검색에 사용된 검색어")
+
     # ⏱️ 시간 및 수집 상태
     published_date: Optional[str] = Field(default=None, description="확인된 기사/공문서 발행일시")
     event_date: Optional[str] = Field(default=None, description="사건 발생일 (수집단에서는 절대 임의로 채우지 않고 None 유지)")
@@ -40,3 +43,24 @@ class DocumentData(BaseModel):
 
     # 📑 문단 목록
     paragraphs: List[ParagraphData] = Field(default_factory=list, description="분할된 문단 목록")
+
+
+class SearchQueryItem(BaseModel):
+    """나현님이 보내주는 개별 언어별 쿼리 항목"""
+    language: str
+    query: str
+
+
+class SearchPlanRequest(BaseModel):
+    """나현님/신엽님이 수집기로 보내는 요청 포맷"""
+    event: str
+    event_date: Optional[str] = None
+    queries: List[SearchQueryItem]
+
+
+class OSINTCollectionResponse(BaseModel):
+    """수집기가 최종 반환하는 4개국 그룹화 응답 규격"""
+    event: str
+    event_date: Optional[str] = None
+    by_country: dict = Field(description="국가별(CN/TW, JP, US, KR) 그룹화된 문서 목록")
+    all_documents: List[DocumentData] = Field(description="전체 수집 문서 리스트")

@@ -200,6 +200,7 @@ class OSINTCollector:
                 "quoted_source": quoted_source,
 
                 # ⏱️ [시간 및 상태]
+                "query": query,  # 🔍 [수집에 사용된 검색어]
                 "published_date": item.get("published_date") or None,
                 "event_date": None,
                 "status": status,
@@ -216,6 +217,73 @@ class OSINTCollector:
             documents.append(doc_entry)
 
         return documents
+
+    def collect_plan(
+        self,
+        plan: dict,
+        days_back: int = 7,
+        max_results_per_query: int = 4,
+    ) -> Dict:
+        """
+        앞단(Orchestrator/나현님)의 요청 포맷(event, event_date, queries)을 받아 수집하고,
+        중국(대만), 일본, 미국(글로벌), 한국 4개국 그룹화 결과 및 전체 리스트를 반환합니다.
+        """
+        event = plan.get("event", "")
+        event_date = plan.get("event_date")
+        raw_queries = plan.get("queries", [])
+
+        # 쿼리 파싱
+        query_map = {}
+        for item in raw_queries:
+            if isinstance(item, dict):
+                lang = item.get("language", "unknown")
+                q = item.get("query", "")
+                if q:
+                    query_map[lang] = q
+            elif isinstance(item, str):
+                query_map[f"q_{len(query_map)+1}"] = item
+
+        # 🇰🇷 한국어 쿼리가 없으면 한국 출처 수집을 위해 자동 보강
+        if "ko" not in query_map and event:
+            date_prefix = f"{event_date} " if event_date else ""
+            query_map["ko"] = f"{date_prefix}{event} 군용기 동향 국방부 발표".strip()
+            print(f"  [+] 한국 출처 수집을 위해 한국어 쿼리 자동 추가: '{query_map['ko']}'")
+
+        # 다국어 수집 실행
+        all_docs = self.collect_multilingual(
+            queries=query_map,
+            days_back=days_back,
+            max_results_per_query=max_results_per_query,
+        )
+
+        # 4개 그룹 (CN: 중국/대만, JP: 일본, US: 미국/글로벌, KR: 한국)으로 분류
+        by_country = {
+            "CN": [],  # 중국 및 대만 당사자
+            "JP": [],  # 일본
+            "US": [],  # 미국 및 글로벌
+            "KR": [],  # 한국
+        }
+
+        for doc in all_docs:
+            c = doc.get("country", "").upper()
+            if c in ("CN", "TW"):
+                by_country["CN"].append(doc)
+            elif c == "JP":
+                by_country["JP"].append(doc)
+            elif c == "KR":
+                by_country["KR"].append(doc)
+            elif c in ("US", "GLOBAL", "SG", "PH"):
+                by_country["US"].append(doc)
+            else:
+                by_country.setdefault("OTHER", []).append(doc)
+
+        response = {
+            "event": event,
+            "event_date": event_date,
+            "by_country": by_country,
+            "all_documents": all_docs,
+        }
+        return response
 
     def collect_multilingual(
         self,
