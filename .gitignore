@@ -41,3 +41,7 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Output JSONs
+*.json
+!mcp_config.json

@@ -19,6 +19,9 @@ class DocumentData(BaseModel):
     url: str = Field(description="출처 원문 URL")
     title: str = Field(description="기사/문서 제목")
 
+    # 🌐 언어 식별
+    language: str = Field(default="unknown", description="문서 언어 코드: zh, ja, ko, en, unknown")
+
     # 🎯 티어 및 출처 평가 메타데이터
     tier: int = Field(description="출처 등급: 1(당사국 공식), 2(제3국 중립 관측), 3(검증 언론)")
     source_name: str = Field(description="기관/언론사 명칭 (예: Taiwan MND, Japan MoD)")

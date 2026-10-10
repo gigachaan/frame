@@ -2,51 +2,51 @@
 OSINT 수집기 설정 및 도메인 티어(Tier) 정의
 """
 
-# 🎯 도메인별 티어, 국가, 기관명, 기본 신뢰도 가중치
+# 🎯 도메인별 티어, 기본 언어, 국가, 기관명, 기본 신뢰도 가중치
 OSINT_WHITELIST = {
     # [Tier 1] 당사국 공식 발표 (공식성은 높으나 자국 유리 왜곡 가능성 감안 가중치 0.85)
     "mnd.gov.tw": {
-        "tier": 1, "country": "TW", "category": "party_official",
+        "tier": 1, "country": "TW", "language": "zh", "category": "party_official",
         "name": "Taiwan MND", "weight": 0.85
     },
     "mod.gov.cn": {
-        "tier": 1, "country": "CN", "category": "party_official",
+        "tier": 1, "country": "CN", "language": "zh", "category": "party_official",
         "name": "China MoD", "weight": 0.85
     },
     "ccg.gov.cn": {
-        "tier": 1, "country": "CN", "category": "party_official",
+        "tier": 1, "country": "CN", "language": "zh", "category": "party_official",
         "name": "China Coast Guard", "weight": 0.80
     },
 
     # [Tier 2] 역내 제3국 공식 감시기구 (가장 객관적인 레이더/관측 데이터 -> 가중치 0.95 최고점)
     "mod.go.jp": {
-        "tier": 2, "country": "JP", "category": "neutral_observer",
+        "tier": 2, "country": "JP", "language": "ja", "category": "neutral_observer",
         "name": "Japan MoD / Joint Staff", "weight": 0.95
     },
     "coastguard.gov.ph": {
-        "tier": 2, "country": "PH", "category": "neutral_observer",
+        "tier": 2, "country": "PH", "language": "en", "category": "neutral_observer",
         "name": "Philippine Coast Guard", "weight": 0.90
     },
     "mnd.go.kr": {
-        "tier": 2, "country": "KR", "category": "neutral_observer",
+        "tier": 2, "country": "KR", "language": "ko", "category": "neutral_observer",
         "name": "Korea MND", "weight": 0.90
     },
 
     # [Tier 3] 공신력 있는 역내/글로벌 팩트 언론 (가중치 0.75)
     "channelnewsasia.com": {
-        "tier": 3, "country": "SG", "category": "reputable_media",
+        "tier": 3, "country": "SG", "language": "en", "category": "reputable_media",
         "name": "CNA Singapore", "weight": 0.75
     },
     "kyodonews.net": {
-        "tier": 3, "country": "JP", "category": "reputable_media",
+        "tier": 3, "country": "JP", "language": "ja", "category": "reputable_media",
         "name": "Kyodo News", "weight": 0.75
     },
     "nhk.or.jp": {
-        "tier": 3, "country": "JP", "category": "reputable_media",
+        "tier": 3, "country": "JP", "language": "ja", "category": "reputable_media",
         "name": "NHK World", "weight": 0.75
     },
     "reuters.com": {
-        "tier": 3, "country": "GLOBAL", "category": "reputable_media",
+        "tier": 3, "country": "GLOBAL", "language": "en", "category": "reputable_media",
         "name": "Reuters", "weight": 0.75
     }
 }
