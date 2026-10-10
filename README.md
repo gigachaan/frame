@@ -1,7 +1,7 @@
 # 🛡️ KoreanDefense / frame - 안보 OSINT 수집 및 검증 프레임워크
 
 이 저장소(`frame`)는 **해커톤 Track T2-1 (Fusion OSINT Copilot)**의 **데이터 수집 및 전처리 파이프라인** 모듈입니다.
-기존 베이스라인 코드에 종속되지 않는 독립 모듈로 개발되었으며, 팀원(신엽님, 나현님, 다슬님)의 분석 엔진 및 오케스트레이터와 유기적으로 연동됩니다.
+기존 코드베이스에 종속되지 않는 독립 모듈로 개발되었으며, 팀원(신엽님, 나현님, 다슬님)의 분석 엔진 및 오케스트레이터와 완벽하게 연동됩니다.
 
 ---
 
@@ -9,28 +9,42 @@
 
 | 파일명 | 역할 | 설명 |
 | :--- | :--- | :--- |
-| `config.py` | **설정 및 도메인 티어 정의** | 7개국 화이트리스트 도메인(Tier 1~3), 언어 매핑, 신뢰도 가중치, 순환 보고 방어 정규식 |
-| `schemas.py` | **데이터 스키마 정의** | Pydantic 기반 표준 데이터 규격 (`DocumentData`, `ParagraphData`, `SearchPlanRequest`) |
-| `collector.py` | **핵심 수집 엔진 (`OSINTCollector`)** | Tavily 연동, 한국어 질문 -> 7개국 자동 확장, **국가별 최대 5건 캡**, 언어 판별, 티어 태깅, 순환 보고 감지, 문단 분할 |
-| `demo_run.py` | **검증 및 데모 실행 스크립트** | 모의 데이터 테스트 및 실제 Tavily 기반 7개국 라이브 수집 단일 실행 검증 스크립트 |
+| `config.py` | **설정 및 도메인 티어 정의** | 7개국 화이트리스트 도메인(Tier 1~3), `COUNTRY_DOMAINS`, 신뢰도 가중치, `DEFENSE_LEXICON`(안보 전문 번역 사전), 순환 보고 감지 정규식 |
+| `schemas.py` | **데이터 스키마 정의** | Pydantic 기반 표준 데이터 규격 (`DocumentData`, `ParagraphData`, `SearchPlanRequest`, `OSINTCollectionResponse`) |
+| `collector.py` | **핵심 수집 엔진 (`OSINTCollector`)** | Tavily 연동, 한국어 질문 -> 7개국 1:1 직역 변환, 국가별 타깃 도메인 검색, **나라별 최대 5건 그룹화 수집**, 언어 판별, 티어 태깅, 순환 보고 감지 |
+| `demo_run.py` | **검증 및 데모 실행 스크립트** | 모의 데이터 테스트 및 실제 Tavily 기반 7개국 라이브 수집(총 35건) 단일 실행 검증 스크립트 |
 
 ---
 
-## 🌐 핵심 기능: 한국어 질문 1개 -> 7대 안보 행위자 자동 변환 & 국가별 5건 선별
+## 🌐 핵심 기능
 
-질문이 한국어로 들어오면, 내부에서 7대 주요 안보 행위자 언어/관점별 전용 쿼리로 자동 변환하여 수집합니다:
+### 1. 질문 문장 1:1 자연어 직역 (불필요한 키워드 샐러드 배제)
+인위적인 하드코딩 키워드 뭉치(`解放军 演习 战备警巡 东部战区 军机` 등)를 일절 배제하고, 사용자가 입력한 질문 문장을 안보 전문 사전(`DEFENSE_LEXICON`)을 통해 각 국가 언어로 **1:1 충실하게 직역**하여 검색합니다:
 
-- **중국 (CN)**: 중국 국방부, 신화통신, 해경 (중문 간체 쿼리)
-- **대만 (TW)**: 대만 국방부, 중앙통신사 (중문 번체 쿼리)
-- **일본 (JP)**: 일본 방위성/통합막료감부, 교도통신, NHK (일본어 쿼리)
-- **한국 (KR)**: 대한민국 국방부, 합동참모본부, 연합뉴스 (한국어 쿼리)
-- **인도 (IN)**: 인도 국방부, PIB 공보국, The Hindu (영어 쿼리)
-- **파키스탄 (PK)**: 파키스탄 군 홍보원(ISPR), Dawn (영어 쿼리)
-- **미국/글로벌 (US)**: 미 국방부(DoD), 로이터, AP (영어 쿼리)
+- 🇰🇷 **한국 (KR)**: `'대만해협 군사활동'` *(질문 원문 그대로 전달)*
+- 🇨🇳 **중국 (CN)**: `'台湾海峡 军事活动'` *(중문 간체 1:1 직역)*
+- 🇹🇼 **대만 (TW)**: `'台灣海峽 軍事活動'` *(중문 번체 1:1 직역)*
+- 🇯🇵 **일본 (JP)**: `'台湾海峡 軍事活動'` *(일본어 1:1 직역)*
+- 🇺🇸 **미국 (US)**: `'Taiwan Strait military activity'` *(영어 1:1 직역)*
+- 🇮🇳 **인도 (IN)**: `'Taiwan Strait military activity'` *(영어 1:1 직역)*
+- 🇵🇰 **파키스탄 (PK)**: `'Taiwan Strait military activity'` *(영어 1:1 직역)*
 
-### 🎯 국가별 균등 수집 (`max_docs_per_country = 5`)
-- 전체 문서 일괄 슬라이스로 인해 특정 국가가 선점하여 다른 국가가 0건으로 누락되는 문제를 원천 차단.
-- **각 국가(CN, TW, JP, KR, IN, PK, US)마다 최대 5건**씩 균등 선별하여 그룹화(`by_country`) 및 통합 리스트(`all_documents`)로 제공합니다.
+> **💡 문장형 질문 지원**: `"최근 카슈미르 국경 충돌"`, `"북한 탄도미사일 발사 동향"` 등 어떤 형태의 문장형 질문이 입력되어도 조사 및 어미를 정리하고 핵심 군사/지정학 엔티티를 정밀 치환하여 변환합니다.
+
+### 2. 7개국 국가별 타깃 도메인 수집 (`COUNTRY_DOMAINS`)
+전체 도메인을 한 번에 검색하여 특정 국가가 결과를 독점하는 현상을 원천 방지하기 위해, 각 국가 검색 시 해당 국가의 공식 국방 기관 및 검증 언론 도메인을 직접 타기팅합니다:
+- **KR**: `mnd.go.kr`, `jcs.mil.kr`, `yna.co.kr`
+- **CN**: `mod.gov.cn`, `ccg.gov.cn`, `news.cn`
+- **TW**: `mnd.gov.tw`, `cna.com.tw`
+- **JP**: `mod.go.jp`, `kyodonews.net`, `nhk.or.jp`
+- **IN**: `mod.gov.in`, `pib.gov.in`, `thehindu.com`
+- **PK**: `ispr.gov.pk`, `dawn.com`
+- **US**: `defense.gov`, `apnews.com`, `reuters.com`, `channelnewsasia.com`
+
+### 3. 나라별 그룹화 반환 (`by_country`)
+수집 결과는 사용자가 가장 다루기 편하도록 **나라별로 묶인 형태**(`by_country`)로 반환되며, 각 국가마다 **최대 5건씩 균등하게** 선별됩니다:
+- `result["by_country"]["TW"]` 또는 `result["TW"]`로 직관적인 인덱싱 지원.
+- 7개국 × 최대 5건 = 총 35건의 다국어 교차 검증 데이터 확보.
 
 ---
 
@@ -57,17 +71,6 @@
 
 ```json
 {
-  "korean_question": "대만해협 군사활동",
-  "event_date": "2026-10-01",
-  "generated_queries": {
-    "CN": "2026-10-01 台湾海峡 解放军 演习 战备警巡 东部战区 军机",
-    "TW": "2026-10-01 台灣海峽 國防部 共機 越過中線 演習",
-    "JP": "2026-10-01 台湾海峡 中国軍機 演習 防衛省 統合幕僚監部",
-    "KR": "2026-10-01 대만해협 군사활동 국방부 군용기 동향",
-    "IN": "2026-10-01 Taiwan Strait PLA military aircraft exercise China Taiwan",
-    "PK": "2026-10-01 Taiwan Strait military activity China Taiwan tension",
-    "US": "2026-10-01 Taiwan Strait PLA military exercises median line DoD"
-  },
   "by_country": {
     "CN": [ /* 중국 문서 최대 5건 */ ],
     "TW": [ /* 대만 문서 최대 5건 */ ],
@@ -77,8 +80,19 @@
     "PK": [ /* 파키스탄 문서 최대 5건 */ ],
     "US": [ /* 미국/글로벌 문서 최대 5건 */ ]
   },
-  "total_count": 24,
-  "all_documents": [ /* 전체 수집 문서 리스트 */ ]
+  "korean_question": "대만해협 군사활동",
+  "event_date": "2026-10-01",
+  "generated_queries": {
+    "KR": "대만해협 군사활동",
+    "CN": "台湾海峡 军事活动",
+    "TW": "台灣海峽 軍事活動",
+    "JP": "台湾海峡 軍事活動",
+    "US": "Taiwan Strait military activity",
+    "IN": "Taiwan Strait military activity",
+    "PK": "Taiwan Strait military activity"
+  },
+  "total_count": 35,
+  "all_documents": [ /* 전체 수집 문서 35건 리스트 */ ]
 }
 ```
 
@@ -97,7 +111,7 @@
   "credibility_weight": 0.95,
   "is_reprint_likely": false,
   "quoted_source": null,
-  "query": "2026-10-01 台湾海峡 中国軍機 演習 防衛省 統合幕僚監部",
+  "query": "台湾海峡 軍事活動",
   "published_date": "2026-10-10",
   "event_date": null,
   "status": "success_full",
@@ -118,4 +132,5 @@
 cd c:\KoreanDefense\frame
 python demo_run.py
 ```
-- `.env` 파일에 `TAVILY_API_KEY=tvly-...` 설정 시 실제 7개국 라이브 수집 모드로 즉시 동작합니다.
+- `.env` 파일에 `TAVILY_API_KEY=tvly-...` 설정 시 실제 7개국 라이브 수집 모드(총 35건)로 즉시 동작합니다.
+- API 키가 없는 환경에서는 모의 데이터 검증 모드로 자동 동작합니다.
