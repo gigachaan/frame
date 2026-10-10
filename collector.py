@@ -218,24 +218,47 @@ class OSINTCollector:
         return documents
 
     def collect_multilingual(
-        self, queries: List[str], days_back: int = 3, max_results_per_query: int = 5
+        self,
+        queries: object,
+        days_back: int = 3,
+        max_results_per_query: int = 5,
     ) -> List[Dict]:
-        """다국어 쿼리 리스트를 받아 중복 URL을 제거하고 통합 수집"""
+        """다국어 쿼리(리스트 또는 딕셔너리)를 받아 중복 URL을 제거하고 통합 수집"""
+        if isinstance(queries, dict):
+            query_items = list(queries.items())
+        else:
+            query_items = [(f"query_{i+1}", q) for i, q in enumerate(queries)]
+
         all_docs = []
         seen_urls = set()
 
-        for q in queries:
+        for lang_key, q in query_items:
+            print(f"  [>] 검색 중 ({lang_key}): '{q}'...")
             docs = self.collect(
                 query=q, days_back=days_back, max_results=max_results_per_query
             )
             for d in docs:
-                # URL 끝 슬래시나 파편(#) 정규화 후 중복 검사
                 norm_url = d["url"].split("#")[0].rstrip("/")
                 if norm_url not in seen_urls:
                     seen_urls.add(norm_url)
                     all_docs.append(d)
 
-        print(f"[✓] 다국어 수집 완료: {len(queries)}개 쿼리로부터 {len(all_docs)}건 고유 문서 확보")
+        # 수집 통계 출력
+        lang_counts = {}
+        tier_counts = {}
+        for d in all_docs:
+            l = d.get("language", "unknown")
+            t = f"Tier {d.get('tier', '?')}"
+            lang_counts[l] = lang_counts.get(l, 0) + 1
+            tier_counts[t] = tier_counts.get(t, 0) + 1
+
+        lang_str = ", ".join(f"{k}: {v}건" for k, v in sorted(lang_counts.items()))
+        tier_str = ", ".join(f"{k}: {v}건" for k, v in sorted(tier_counts.items()))
+        print(f"[✓] 다국어 수집 완료: 총 {len(all_docs)}건 고유 문서 확보")
+        if all_docs:
+            print(f"    - 언어 분포: {lang_str}")
+            print(f"    - 티어 분포: {tier_str}")
+
         return all_docs
 
     @staticmethod
