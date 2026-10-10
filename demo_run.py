@@ -28,7 +28,7 @@ def main():
         
         mock_collector = OSINTCollector(api_key="mock_key")
         
-        # 샘플 1: 일본 방위성(Tier 2, ja) 발표 (원문 인용 감지 포함)
+        # 샘플 1: 일본 방위성(Tier 1, ja) 발표 (원문 인용 감지 포함)
         sample_url = "https://www.mod.go.jp/j/press/news/2026/10/10a.html"
         sample_text = (
             "According to Taiwan MND reports on earlier movements, the PLA increased presence.\n\n"

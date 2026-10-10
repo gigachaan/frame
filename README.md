@@ -36,9 +36,9 @@
 
 | Tier | 분류명 | 포함 도메인 | 기본 언어 | 가중치 | 역할 및 성격 |
 | :---: | :--- | :--- | :---: | :---: | :--- |
-| **Tier 1** | **당사국 공식 발표**<br>(Primary Parties) | `mnd.gov.tw` (대만 국방부)<br>`mod.gov.cn` (중국 국방부)<br>`ccg.gov.cn` (중국 해경) | `zh` | `0.85` | **1차 공식 발표**. 공식성은 최고이나 자국에 유리한 왜곡/선전(Propaganda) 가능성 감안. |
-| **Tier 2** | **역내 제3국 감시기구**<br>(Regional Observers) | `mod.go.jp` (일본 방위성·레이더 항적)<br>`coastguard.gov.ph` (필리핀 해경)<br>`mnd.go.kr` (한국 국방부) | `ja` / `en` / `ko` | `0.95` | **최고 가산점 대상!** 당사자가 아니므로 가장 객관적인 레이더/항적 교차검증 근거 제공. |
-| **Tier 3** | **공신력 검증 언론**<br>(Reputable Media) | `channelnewsasia.com` (싱가포르 CNA)<br>`kyodonews.net` (일본 교도통신)<br>`nhk.or.jp` (일본 NHK)<br>`reuters.com` (로이터) | `en` / `ja` | `0.75` | **신속한 팩트 보도**. 사건 발생 개요 파악 및 교차 보도 확인. |
+| **Tier 1** | **역내 제3국 감시기구**<br>(Regional Observers) | `mod.go.jp` (일본 방위성·레이더 항적)<br>`coastguard.gov.ph` (필리핀 해경)<br>`mnd.go.kr` (한국 국방부) | `ja` / `en` / `ko` | **`0.95`** | **최고 신뢰도 (1순위)!** 직접 이해관계가 없는 제3국이 레이더/초계기로 직접 확인한 객관적 물리 팩트. |
+| **Tier 2** | **당사국 공식 발표**<br>(Primary Parties) | `mnd.gov.tw` (대만 국방부)<br>`mod.gov.cn` (중국 국방부)<br>`ccg.gov.cn` (중국 해경) | `zh` | **`0.85`** | **공식 2순위**. 공식성은 높으나 자국에 유리하게 왜곡/선전(Propaganda)·일방 주장 가능성 감안. |
+| **Tier 3** | **공신력 검증 언론**<br>(Reputable Media) | `channelnewsasia.com` (싱가포르 CNA)<br>`kyodonews.net` (일본 교도통신)<br>`nhk.or.jp` (일본 NHK)<br>`reuters.com` (로이터) | `en` / `ja` | **`0.75`** | **취재 3순위**. 신속한 팩트 보도. 사건 발생 개요 파악 및 2차 교차 보도 확인. |
 
 ---
 
@@ -68,7 +68,7 @@
   "title": "中国海軍艦艇の動向について",
   "language": "ja",
   
-  "tier": 2,
+  "tier": 1,
   "source_name": "Japan MoD / Joint Staff",
   "country": "JP",
   "source_category": "neutral_observer",
