@@ -15,7 +15,7 @@ import os
 import re
 import uuid
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from urllib.parse import urlparse
 
 try:
@@ -265,34 +265,28 @@ class OSINTCollector:
         self,
         question: str,
         event_date: Optional[str] = None,
-        max_total_docs: int = 5,
+        max_docs_per_country: int = 5,
         days_back: int = 30,
+        **kwargs,
     ) -> Dict:
         """
-        [핵심 함수] 한국어 질문 1개만 넣으면:
-        1. 중국, 대만, 일본, 한국, 인도, 파키스탄, 미국 7개국 쿼리로 자동 변환
-        2. 화이트리스트 기반 다국어 수집
-        3. 최대 5건으로 압축하여 7개국별로 그룹화 반환
+        [핵심 함수] 한국어 질문 1개만 입력받아:
+        1. 7대 주요 안보 행위자(중국 CN, 대만 TW, 일본 JP, 한국 KR, 인도 IN, 파키스탄 PK, 미국 US)별 전용 맞춤 쿼리로 자동 변환
+        2. 화이트리스트 기반 Tavily 다국어 수집
+        3. 🎯 각 국가별로 최대 5건(max_docs_per_country)씩 선별하여 7개국 그룹으로 반환
         """
+        # 하위 호환성 지원 (max_total_docs 전달 시 max_docs_per_country로 매핑)
+        if "max_total_docs" in kwargs and kwargs["max_total_docs"] is not None:
+            max_docs_per_country = kwargs["max_total_docs"]
+
         print(f"\n[🌐] 한국어 질문 감지: '{question}' (일자: {event_date or '전체'})")
-        print("[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리로 자동 변환 중...")
+        print(f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작...")
 
         query_map = self._expand_korean_to_7_actors(question, event_date)
         for country_key, q in query_map.items():
             print(f"  - [{country_key}] 쿼리: '{q}'")
 
-        # 각 국가별로 1~2건씩 검색 후 통합
-        all_collected = self.collect_multilingual(
-            queries=query_map,
-            days_back=days_back,
-            max_results_per_query=2,
-        )
-
-        # 🎯 최대 5건으로 수집 결과 제한
-        capped_docs = all_collected[:max_total_docs]
-        print(f"\n[🔒] 수집 건수 제한 적용: 총 {len(all_collected)}건 중 최상위 {len(capped_docs)}건 최종 선별 (최대 {max_total_docs}건 제한)")
-
-        # 7개국별로 깔끔하게 그룹화
+        # 7개국별 문서 버킷 초기화
         by_country = {
             "CN": [],  # 중국
             "TW": [],  # 대만
@@ -303,36 +297,73 @@ class OSINTCollector:
             "US": [],  # 미국 / 글로벌
         }
 
-        for doc in capped_docs:
-            c = doc.get("country", "").upper()
-            if c in by_country:
-                by_country[c].append(doc)
-            elif c in ("GLOBAL", "SG", "PH"):
-                by_country["US"].append(doc)
-            else:
-                by_country.setdefault("OTHER", []).append(doc)
+        seen_urls = set()
+
+        for country_key, q in query_map.items():
+            print(f"  [>] 검색 중 ({country_key}): '{q}'...")
+            docs = self.collect(
+                query=q,
+                days_back=days_back,
+                max_results=max_docs_per_country,
+            )
+            for d in docs:
+                norm_url = d["url"].split("#")[0].rstrip("/")
+                if norm_url in seen_urls:
+                    continue
+                seen_urls.add(norm_url)
+
+                c = d.get("country", "").upper()
+                if c in by_country:
+                    target_bucket = c
+                elif c in ("GLOBAL", "SG", "PH"):
+                    # 글로벌 매체는 해당 쿼리 국가가 아직 자리가 있으면 해당 국가에 배정, 아니면 US에 배정
+                    if len(by_country[country_key]) < max_docs_per_country:
+                        target_bucket = country_key
+                    else:
+                        target_bucket = "US"
+                elif country_key in by_country:
+                    target_bucket = country_key
+                else:
+                    target_bucket = "OTHER"
+
+                if target_bucket in by_country and len(by_country[target_bucket]) < max_docs_per_country:
+                    by_country[target_bucket].append(d)
+                elif target_bucket == "OTHER":
+                    by_country.setdefault("OTHER", []).append(d)
+
+        # 전체 수집 문서 합산 (각 국가별 최대 max_docs_per_country 건)
+        all_documents = []
+        for c_key, c_docs in by_country.items():
+            all_documents.extend(c_docs)
+
+        print(f"\n[🔒] 국가별 최대 {max_docs_per_country}건 선별 완료 (총 {len(all_documents)}건):")
+        for c_code, docs in by_country.items():
+            print(f"  - [{c_code}] {len(docs)}건 / 최대 {max_docs_per_country}건")
 
         return {
             "korean_question": question,
             "event_date": event_date,
             "generated_queries": query_map,
             "by_country": by_country,
-            "total_count": len(capped_docs),
-            "all_documents": capped_docs,
+            "total_count": len(all_documents),
+            "all_documents": all_documents,
         }
 
     def collect_plan(
         self,
         plan: dict,
         days_back: int = 7,
-        max_total_docs: int = 5,
-        max_results_per_query: int = 3,
+        max_docs_per_country: int = 5,
+        max_results_per_query: int = 5,
+        **kwargs,
     ) -> Dict:
         """
         앞단(Orchestrator/나현님)의 요청 포맷(event, event_date, queries)을 받아 수집하고,
-        중국, 대만, 일본, 한국, 인도, 파키스탄, 미국 7개국 그룹화 결과 및 전체 리스트를 반환합니다.
-        (결과는 최대 max_total_docs건으로 제한)
+        중국, 대만, 일본, 한국, 인도, 파키스탄, 미국 7개국별로 각각 최대 max_docs_per_country건씩 선별하여 반환합니다.
         """
+        if "max_total_docs" in kwargs and kwargs["max_total_docs"] is not None:
+            max_docs_per_country = kwargs["max_total_docs"]
+
         event = plan.get("event", "")
         event_date = plan.get("event_date")
         raw_queries = plan.get("queries", [])
@@ -361,10 +392,7 @@ class OSINTCollector:
             max_results_per_query=max_results_per_query,
         )
 
-        # 🎯 최대 건수(기본 5건)로 컷
-        capped_docs = all_docs[:max_total_docs]
-
-        # 7개국 그룹으로 분류
+        # 7개국 그룹으로 분류 (각 국가별 최대 max_docs_per_country건 제한)
         by_country = {
             "CN": [],  # 중국
             "TW": [],  # 대만
@@ -375,21 +403,35 @@ class OSINTCollector:
             "US": [],  # 미국 및 글로벌
         }
 
-        for doc in capped_docs:
+        for doc in all_docs:
             c = doc.get("country", "").upper()
             if c in by_country:
-                by_country[c].append(doc)
+                target_key = c
             elif c in ("GLOBAL", "SG", "PH"):
-                by_country["US"].append(doc)
+                target_key = "US"
+            else:
+                target_key = "OTHER"
+
+            if target_key in by_country:
+                if len(by_country[target_key]) < max_docs_per_country:
+                    by_country[target_key].append(doc)
             else:
                 by_country.setdefault("OTHER", []).append(doc)
+
+        retained_docs = []
+        for c_list in by_country.values():
+            retained_docs.extend(c_list)
+
+        print(f"\n[🔒] 플랜 수집 완료: 각 국가별 최대 {max_docs_per_country}건 선별 (총 {len(retained_docs)}건)")
+        for c_code, docs in by_country.items():
+            print(f"  - [{c_code}] {len(docs)}건 / 최대 {max_docs_per_country}건")
 
         response = {
             "event": event,
             "event_date": event_date,
             "by_country": by_country,
-            "total_count": len(capped_docs),
-            "all_documents": capped_docs,
+            "total_count": len(retained_docs),
+            "all_documents": retained_docs,
         }
         return response
 
@@ -438,13 +480,18 @@ class OSINTCollector:
         return all_docs
 
     @staticmethod
-    def export_json(documents: List[Dict], filepath: str) -> None:
-        """수집한 문서 리스트를 팀원 공유용 JSON 파일로 저장"""
+    def export_json(documents: Union[List[Dict], Dict], filepath: str) -> None:
+        """수집한 문서 리스트 또는 응답 딕셔너리를 팀원 공유용 JSON 파일로 저장"""
         out_path = Path(filepath)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(documents, f, indent=2, ensure_ascii=False)
-        print(f"[💾] 파일 저장 완료: {out_path.resolve()} (총 {len(documents)}개 문서)")
+        count = (
+            len(documents.get("all_documents", []))
+            if isinstance(documents, dict) and "all_documents" in documents
+            else len(documents)
+        )
+        print(f"[💾] 파일 저장 완료: {out_path.resolve()} (총 {count}개 문서)")
 
     @staticmethod
     def load_json(filepath: str) -> List[Dict]:

@@ -1,4 +1,4 @@
-﻿# Environment & Secrets
+# Environment & Secrets
 .env
 .env.*
 *.key
@@ -37,10 +37,13 @@ ENV/
 *.swp
 *.swo
 
-# Testing & Cache
+# Testing, Scratch & Cache
 .pytest_cache/
 .coverage
 htmlcov/
+test_*.py
+run_*.py
+scratch/
 
 # Output JSONs
 *.json
