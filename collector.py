@@ -31,6 +31,7 @@ from config import (
     MAX_PARAGRAPH_CHARS,
     MIN_PARAGRAPH_CHARS,
     DEFENSE_LEXICON,
+    DEFAULT_MIN_SCORE,
 )
 
 
@@ -287,7 +288,8 @@ class OSINTCollector:
         query: str,
         days_back: int = 3,
         max_results: int = 5,
-        min_score: Optional[float] = None,
+        min_score: float = DEFAULT_MIN_SCORE,
+        strict_min_score: bool = False,
         include_domains: Optional[List[str]] = None,
     ) -> List[Dict]:
         """단일 검색어로 Tavily를 검색하고 규격화된 문서 딕셔너리 리스트 반환 (인덱스 제외 및 본문 정제)"""
@@ -312,7 +314,7 @@ class OSINTCollector:
             print(f"[-] Tavily 검색 실패 (Query: '{query}'): {e}")
             return []
 
-        documents = []
+        processed_candidates = []
         for item in response.get("results", []):
             url = item.get("url", "")
             # 1. 인덱스/홈페이지/목록 페이지 배제
@@ -320,8 +322,6 @@ class OSINTCollector:
                 continue
 
             score = round(float(item.get("score") or 0.0), 4)
-            if min_score is not None and score < min_score:
-                continue
 
             # 원본 보존 (나현님 요청: raw_content)
             raw_text = item.get("raw_content") or item.get("content") or ""
@@ -398,9 +398,26 @@ class OSINTCollector:
                     for idx, p_text in enumerate(paragraphs_text)
                 ],
             }
-            documents.append(doc_entry)
-            if len(documents) >= max_results:
-                break
+            processed_candidates.append(doc_entry)
+
+        # 🎯 min_score (기본 0.7) 필터링 및 선별
+        # 1차: min_score(0.7) 이상인 고관련도 문서 선별
+        primary_docs = [d for d in processed_candidates if d.get("score", 0.0) >= min_score]
+        
+        if strict_min_score:
+            return primary_docs[:max_results]
+
+        # strict 모드가 아닐 때: 0.7 이상 문서 우선 채택 후, 부족 시 타깃 도메인 내 최고점 순으로 보충
+        documents = primary_docs[:max_results]
+        if len(documents) < max_results:
+            remaining = [d for d in processed_candidates if d not in documents]
+            # score 내림차순 정렬
+            remaining.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+            for d in remaining:
+                if len(documents) >= max_results:
+                    break
+                d["cleaning"]["score_notice"] = f"기본 임계값(0.7) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 선별됨"
+                documents.append(d)
 
         return documents
 
@@ -458,7 +475,8 @@ class OSINTCollector:
         event_date: Optional[str] = None,
         max_docs_per_country: int = 5,
         days_back: int = 30,
-        min_score: Optional[float] = None,
+        min_score: float = DEFAULT_MIN_SCORE,
+        strict_min_score: bool = False,
         **kwargs,
     ) -> Dict:
         """
@@ -499,6 +517,7 @@ class OSINTCollector:
                 days_back=days_back,
                 max_results=max_docs_per_country,
                 min_score=min_score,
+                strict_min_score=strict_min_score,
                 include_domains=target_domains,
             )
             for d in docs:
@@ -538,7 +557,8 @@ class OSINTCollector:
         days_back: int = 7,
         max_docs_per_country: int = 5,
         max_results_per_query: int = 5,
-        min_score: Optional[float] = None,
+        min_score: float = DEFAULT_MIN_SCORE,
+        strict_min_score: bool = False,
         **kwargs,
     ) -> Dict:
         """
@@ -574,6 +594,7 @@ class OSINTCollector:
             days_back=days_back,
             max_results_per_query=max_results_per_query,
             min_score=min_score,
+            strict_min_score=strict_min_score,
         )
 
         # 7개국 그룹으로 분류 (각 국가별 최대 max_docs_per_country건 제한)
@@ -625,7 +646,8 @@ class OSINTCollector:
         queries: object,
         days_back: int = 3,
         max_results_per_query: int = 5,
-        min_score: Optional[float] = None,
+        min_score: float = DEFAULT_MIN_SCORE,
+        strict_min_score: bool = False,
     ) -> List[Dict]:
         """다국어 쿼리(리스트 또는 딕셔너리)를 받아 중복 URL을 제거하고 통합 수집"""
         if isinstance(queries, dict):
@@ -639,7 +661,7 @@ class OSINTCollector:
         for lang_key, q in query_items:
             print(f"  [>] 검색 중 ({lang_key}): '{q}'...")
             docs = self.collect(
-                query=q, days_back=days_back, max_results=max_results_per_query, min_score=min_score
+                query=q, days_back=days_back, max_results=max_results_per_query, min_score=min_score, strict_min_score=strict_min_score
             )
             for d in docs:
                 norm_url = d["url"].split("#")[0].rstrip("/")

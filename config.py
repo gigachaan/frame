@@ -122,6 +122,7 @@ QUOTE_PATTERNS = [
 MAX_RAW_CHARS = 4000          # 1개 문서당 최대 본문 길이 (토큰 및 비용 절약)
 MAX_PARAGRAPH_CHARS = 400     # 1개 문단 최대 글자 수 (LLM 문맥 크기 최적화)
 MIN_PARAGRAPH_CHARS = 15      # 너무 짧은 무의미한 줄 제거 기준
+DEFAULT_MIN_SCORE = 0.7        # 🎯 Tavily 검색 관련도 최소 임계값 기준 (기본 0.7)
 
 # 🌐 다국어 안보/국방 전문 번역 사전 (질문 문장 -> 중국어(간체/번체), 일본어, 영어 1:1 자연 번역용)
 DEFENSE_LEXICON = [
