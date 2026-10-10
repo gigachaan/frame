@@ -126,6 +126,33 @@ DEFAULT_MIN_SCORE = 0.7        # 🎯 Tavily 검색 관련도 최소 임계값 �
 
 # 🌐 다국어 안보/국방 전문 번역 사전 (질문 문장 -> 중국어(간체/번체), 일본어, 영어 1:1 자연 번역용)
 DEFENSE_LEXICON = [
+    # [신규 추가: 전구 / 공역·항행 통제 / 대응 데이터 / 전문 군사 분석 어휘]
+    ("대만 해협 일대", {"CN": "台湾海峡", "TW": "台灣海峽", "JP": "台湾海峡", "EN": "Taiwan Strait"}),
+    ("대만 해협", {"CN": "台湾海峡", "TW": "台灣海峽", "JP": "台湾海峡", "EN": "Taiwan Strait"}),
+    ("중국 동부전구", {"CN": "解放军 东部战区", "TW": "共軍 東部戰區", "JP": "中国軍 東部戦区", "EN": "PLA Eastern Theater Command"}),
+    ("동부전구", {"CN": "东部战区", "TW": "東部戰區", "JP": "東部戦区", "EN": "Eastern Theater Command"}),
+    ("동부 전구", {"CN": "东部战区", "TW": "東部戰區", "JP": "東部戦区", "EN": "Eastern Theater Command"}),
+    ("남부전구", {"CN": "南部战区", "TW": "南部戰區", "JP": "南部戦区", "EN": "Southern Theater Command"}),
+    ("군사 훈련", {"CN": "军事演习", "TW": "軍事演習", "JP": "軍事演習", "EN": "military exercises"}),
+    ("군사훈련", {"CN": "军事演习", "TW": "軍事演習", "JP": "軍事演習", "EN": "military exercises"}),
+    ("비행/항행 통제", {"CN": "航行警告 禁航 禁飞", "TW": "航行警告 禁航 禁飛", "JP": "航行警報 飛行制限", "EN": "airspace navigation restrictions"}),
+    ("항행 통제", {"CN": "航行警告", "TW": "航行警告 禁航", "JP": "航行警報", "EN": "navigation restrictions"}),
+    ("항행통제", {"CN": "航行警告", "TW": "航行警告 禁航", "JP": "航行警報", "EN": "navigation restrictions"}),
+    ("비행 통제", {"CN": "禁飞区", "TW": "禁飛區", "JP": "飛行制限", "EN": "airspace restrictions"}),
+    ("비행통제", {"CN": "禁飞区", "TW": "禁飛區", "JP": "飛行制限", "EN": "airspace restrictions"}),
+    ("통제 시간 구역", {"CN": "管制时间 区域", "TW": "管制時間 區域", "JP": "制限期間 区域", "EN": "restriction time and area"}),
+    ("시간·구역", {"CN": "时间 区域", "TW": "時間 區域", "JP": "時間 区域", "EN": "time and area"}),
+    ("시간 구역", {"CN": "时间 区域", "TW": "時間 區域", "JP": "時間 区域", "EN": "time and area"}),
+    ("통제 구역", {"CN": "管制区域", "TW": "管制區域", "JP": "管制区域", "EN": "restricted area"}),
+    ("훈련 구역", {"CN": "演习区域", "TW": "演習區域", "JP": "演習区域", "EN": "exercise zone"}),
+    ("대만 국방부", {"CN": "台湾 国防部", "TW": "台灣 國防部", "JP": "台湾 国防部", "EN": "Taiwan MND"}),
+    ("일본 방위성", {"CN": "日本 防卫省", "TW": "日本 防衛省", "JP": "日本 防衛省", "EN": "Japan MOD"}),
+    ("방위성", {"CN": "防卫省", "TW": "防衛省", "JP": "防衛省", "EN": "Ministry of Defense"}),
+    ("실측 대응 데이터", {"CN": "监测 应对 数据", "TW": "實測 應對 數據", "JP": "監視 対応 データ", "EN": "monitoring response data"}),
+    ("실측 대응", {"CN": "监测 应对", "TW": "實測 應對", "JP": "監視 対応", "EN": "monitoring response"}),
+    ("대응 데이터", {"CN": "应对 数据", "TW": "應對 數據", "JP": "対応 データ", "EN": "response data"}),
+    ("일치·상충", {"CN": "差异 一致", "TW": "差異 一致", "JP": "相違 一致", "EN": "discrepancies"}),
+    ("일치 상충", {"CN": "差异 一致", "TW": "差異 一致", "JP": "相違 一致", "EN": "discrepancies"}),
     # 지정학적 위치 / 주요 행위자
     ("대만해협 군사활동", {"CN": "台湾海峡 军事活动", "TW": "台灣海峽 軍事活動", "JP": "台湾海峡 軍事活動", "EN": "Taiwan Strait military activity"}),
     ("대만해협 군사훈련", {"CN": "台湾海峡 军事演习", "TW": "台灣海峽 軍事演習", "JP": "台湾海峡 軍事演習", "EN": "Taiwan Strait military exercise"}),
